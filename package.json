@@ -27,9 +27,10 @@
     "url": "https://github.com/kentpan/cloudflare-voicecity-player/issues"
   },
   "scripts": {
-    "dev": "next dev --webpack -p 3000",
+    "dev": "next dev --webpack -p 3230",
     "build": "next build",
-    "start": "next start -p 3000",
+    "postbuild": "cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
+    "start": "HOSTNAME=0.0.0.0 PORT=3230 node .next/standalone/server.js",
     "lint": "eslint .",
     "build:cf": "npx @opennextjs/cloudflare build",
     "preview:cf": "npm run build:cf && npx @opennextjs/cloudflare preview",

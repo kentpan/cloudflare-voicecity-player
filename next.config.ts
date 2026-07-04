@@ -37,7 +37,7 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: false,
   devIndicators: false,
-  allowedDevOrigins: ["127.0.0.1", "localhost", "x18.ccwu.cc", "192.168.1.100"],
+  allowedDevOrigins: ["127.0.0.1", "localhost", "x18.ccwu.cc", "192.168.1.100", "voice.xubaoge.com"],
   // Transpile radix packages for older browser targets (iOS 13 / WeChat).
   transpilePackages: [
     "react",

@@ -47,6 +47,9 @@ const nextConfig: NextConfig = {
     ...radixPackages,
     "@simplewebauthn/browser",
   ],
+  // Next 16 默认 Turbopack 构建会因 webpack 配置存在而报错，设空 turbopack 配置消除告警。
+  // 生产构建用 Turbopack；dev 模式 `next dev --webpack` 走 webpack 路径（下方 webpack 字段）。
+  turbopack: {},
   webpack: (config, { isServer, dev }) => {
     // Use 'source-map' instead of 'eval-source-map' so iOS 13.3.1 Safari doesn't
     // choke on eval'd source with sourceURL. The eval wrapper can confuse the old

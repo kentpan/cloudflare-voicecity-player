@@ -84,8 +84,8 @@ export function PlayHistoryView() {
       const list = await getPlayHistory();
       setHistory(list);
     } catch (e) {
-      console.error("读取播放历史失败", e);
-      toast.error("读取播放历史失败");
+      console.error("读取播放列表失败", e);
+      toast.error("读取播放列表失败");
     } finally {
       setLoading(false);
     }
@@ -95,28 +95,13 @@ export function PlayHistoryView() {
     loadHistory();
   }, [loadHistory, historyVersion]);
 
-  // 重听一首歌：播放并重新写入历史（playedAt 刷新 → 移到对应分组的顶部）
-  async function handlePlay(song: Song) {
+  // 重听一首歌：仅播放，不刷新 playedAt（不自动置顶）
+  function handlePlay(song: Song) {
     if (currentSong?.id === song.id) {
       setIsPlaying(!isPlaying);
       return;
     }
     playSong(song);
-    // 重新写入历史，playedAt 刷新；收藏的歌曲保持在收藏组顶部
-    try {
-      await addPlayHistoryForReplay(song);
-      bumpHistory();
-      // 重听后通常回到第 1 页（因为这首歌移到了顶部）
-      setPage(1);
-    } catch (e) {
-      console.error("更新播放历史失败", e);
-    }
-  }
-
-  /** 重听时重新写入历史（保留 favorited 状态） */
-  async function addPlayHistoryForReplay(song: Song): Promise<void> {
-    const { addPlayHistory } = await import("@/lib/indexeddb");
-    await addPlayHistory(song);
   }
 
   /** 点击收藏/取消收藏 */
@@ -171,7 +156,7 @@ export function PlayHistoryView() {
       await clearPlayHistory();
       bumpHistory();
       setPage(1);
-      toast.success("已清空未收藏的播放历史");
+      toast.success("已清空未收藏的播放列表");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -200,11 +185,11 @@ export function PlayHistoryView() {
           <div className="relative">
             <div className="flex items-center gap-2 mb-3">
               <Badge variant="secondary" className="bg-blue-500/15 text-blue-300 border-blue-500/20">
-                <Sparkles className="w-3 h-3 mr-1" /> 播放历史
+                <Sparkles className="w-3 h-3 mr-1" /> 播放列表
               </Badge>
             </div>
             <h1 className="text-3xl sm:text-5xl font-bold tracking-tight mb-3">
-              本地播放历史
+              本地播放列表
             </h1>
             <p className="text-muted-foreground text-sm sm:text-base max-w-2xl mb-6">
               历史记录保存在浏览器 indexedDB，仅限本设备。点击列表可再次播放，重听后自动置顶。
@@ -217,7 +202,7 @@ export function PlayHistoryView() {
         </div>
       </section>
 
-      {/* 找歌 / 播放历史 Tab 切换 */}
+      {/* 找歌 / 播放列表 Tab 切换 */}
       <Tabs
         value={view}
         onValueChange={(v) => setView(v as "find" | "history")}
@@ -234,7 +219,7 @@ export function PlayHistoryView() {
             value="history"
             className="rounded-xl h-12 sm:h-11 flex-1 sm:flex-none gap-2 text-sm sm:text-base font-semibold border-transparent dark:data-[state=active]:border-transparent data-[state=active]:!bg-primary dark:data-[state=active]:!bg-primary data-[state=active]:!text-primary-foreground dark:data-[state=active]:!text-primary-foreground data-[state=active]:!shadow-lg data-[state=active]:!shadow-primary/25"
           >
-            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> 播放历史
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> 播放列表
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -502,7 +487,7 @@ export function PlayHistoryView() {
             <AlertDialogDescription>
               {deleteTarget?.favorited
                 ? `「${deleteTarget?.title}」是已收藏的歌曲，确定要删除吗？删除后将同时取消收藏，此操作不可撤销。`
-                : `确定要从播放历史中删除「${deleteTarget?.title}」吗？此操作不可撤销。`}
+                : `确定要从播放列表中删除「${deleteTarget?.title}」吗？此操作不可撤销。`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -525,7 +510,7 @@ export function PlayHistoryView() {
               <AlertTriangle className="w-5 h-5 text-red-400" /> 确认清空
             </AlertDialogTitle>
             <AlertDialogDescription>
-              确定要清空 {clearableCount} 条未收藏的播放历史吗？
+              确定要清空 {clearableCount} 条未收藏的播放列表吗？
               {favoriteCount > 0 && ` 已收藏的 ${favoriteCount} 首歌曲将保留。`}
               此操作不可撤销。
             </AlertDialogDescription>

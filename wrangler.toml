@@ -29,9 +29,11 @@ assets = { directory = ".open-next/assets", binding = "ASSETS" }
 # 部署后通过 env.KV 访问
 [[kv_namespaces]]
 binding = "KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"  # 创建后替换
+id = "ed48271f92b941579785d6375e396d83"
 
 # ---- 环境变量 ----
 # ADMIN_SECRET: 管理员登录密钥，必须配置
-# 通过 `npx wrangler pages secret put ADMIN_SECRET` 设置
-ADMIN_SECRET = "4b8d7782925464d97b0a8ec90389de9a"
+# 敏感密钥请勿写入此文件，通过以下命令以 secret 形式设置：
+#   npx wrangler secret put ADMIN_SECRET
+[vars]
+# ADMIN_SECRET = ""  # 不要写在这里，用 secret 命令设置

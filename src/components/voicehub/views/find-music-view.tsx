@@ -15,13 +15,13 @@ import {
   Headphones,
   TrendingUp,
   Sparkles,
+  ListPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PreviewPlayer } from "@/components/voicehub/preview-player";
 import { AudioMatchDialog } from "@/components/voicehub/audio-match-dialog";
 import { MusicLoginDialog } from "@/components/voicehub/music-login-dialog";
 import { HeroActions } from "@/components/voicehub/hero-actions";
@@ -82,7 +82,7 @@ export function FindMusicView() {
       await addPlayHistory(song);
       bumpHistory();
     } catch (e) {
-      console.error("写入播放历史失败", e);
+      console.error("写入播放列表失败", e);
     }
   }
 
@@ -95,7 +95,20 @@ export function FindMusicView() {
       await addPlayHistory(song);
       bumpHistory();
     } catch (e) {
-      console.error("写入播放历史失败", e);
+      console.error("写入播放列表失败", e);
+    }
+  }
+
+  /** 点击右侧"添加到播放列表"按钮:仅写入 indexedDB,不触发播放 */
+  async function handleAddToList(r: MusicSearchResult) {
+    const song = searchResultToSong(r);
+    try {
+      await addPlayHistory(song);
+      bumpHistory();
+      toast.success(`已添加到播放列表:${song.title}`);
+    } catch (e) {
+      console.error("写入播放列表失败", e);
+      toast.error("添加到播放列表失败");
     }
   }
 
@@ -124,13 +137,13 @@ export function FindMusicView() {
               搜索你喜欢的歌
             </h1>
             <p className="text-muted-foreground text-sm sm:text-base max-w-2xl mb-6">
-              支持网易云 / QQ音乐 / B站视频，点击搜索结果即可在底部统一播放器播放，并自动记录到本地播放历史。
+              支持网易云 / QQ音乐 / B站视频，点击搜索结果即可在底部统一播放器播放，并自动记录到本地播放列表。
             </p>
           </div>
         </div>
       </section>
 
-      {/* 找歌 / 播放历史 Tab 切换 */}
+      {/* 找歌 / 播放列表 Tab 切换 */}
       <Tabs
         value={view}
         onValueChange={(v) => setView(v as "find" | "history")}
@@ -147,7 +160,7 @@ export function FindMusicView() {
             value="history"
             className="rounded-xl h-12 sm:h-11 flex-1 sm:flex-none gap-2 text-sm sm:text-base font-semibold border-transparent dark:data-[state=active]:border-transparent data-[state=active]:!bg-primary dark:data-[state=active]:!bg-primary data-[state=active]:!text-primary-foreground dark:data-[state=active]:!text-primary-foreground data-[state=active]:!shadow-lg data-[state=active]:!shadow-primary/25"
           >
-            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> 播放历史
+            <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" /> 播放列表
           </TabsTrigger>
         </TabsList>
       </Tabs>
@@ -282,8 +295,15 @@ export function FindMusicView() {
                       )}
                     </div>
                   </div>
-                  {/* 试听按钮（独立于卡片点击，stopPropagation） */}
-                  <PreviewPlayer trackId={r.id} platform={r.platform} title={r.title} artist={r.artist} cover={r.cover || ''} />
+                  {/* 添加到播放列表按钮（不触发播放，独立于卡片点击，stopPropagation） */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleAddToList(r); }}
+                    className="shrink-0 w-8 h-8 rounded-full bg-primary/15 text-primary hover:bg-primary hover:text-primary-foreground flex items-center justify-center transition-all"
+                    title="添加到播放列表"
+                    aria-label="添加到播放列表"
+                  >
+                    <ListPlus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               );
             })}

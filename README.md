@@ -1,13 +1,15 @@
 # 🎵 随心音乐播放器
 
-> 一个基于 Next.js 16 的轻量音乐播放应用，支持网易云 / QQ音乐 / B站 多平台搜索、扫码登录、听歌识曲、统一播放器与本地播放历史，可一键部署到 Cloudflare Pages。
+> 一个基于 Next.js 16 的轻量音乐播放应用，支持网易云 / QQ音乐 / B站 多平台搜索、扫码登录、听歌识曲、统一播放器与本地播放历史，可一键部署到 Cloudflare Workers。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg)](https://www.typescriptlang.org/)
-[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages-orange.svg)](https://pages.cloudflare.com/)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
 
-> ⭐ 如果这个项目对你有帮助，欢迎点个 Star 支持一下！你的 Star 是我持续更新的动力。
+🌐 **在线 Demo**：<https://x18.ccwu.cc>
+
+> ⭐ 如果这个项目对你有帮助，请您点个 Star 支持一下！你的 Star 是我持续更新的动力。
 
 ## ✨ 功能特性
 
@@ -43,8 +45,19 @@
 
 ### 环境要求
 
-- Node.js 18+ 或 [Bun](https://bun.sh/) 1.0+
+- Node.js 18+（推荐 20+）；包管理器任选其一：[bun](https://bun.sh/) / [pnpm](https://pnpm.io/) / [npm](https://www.npmjs.com/) / [yarn](https://yarnpkg.com/)
 - 现代浏览器（支持 indexedDB、AudioWorklet）
+
+> 本项目与包管理器无关，`package.json` 中的脚本使用 `next` / `npx` 通用命令，bun / pnpm / npm / yarn 均可直接运行。下方命令以 `bun` 为例，其他包管理器对应关系：
+>
+> | 操作 | bun | pnpm | npm | yarn |
+> |------|-----|------|-----|------|
+> | 安装依赖 | `bun install` | `pnpm install` | `npm install` | `yarn` |
+> | 开发服务器 | `bun run dev` | `pnpm dev` | `npm run dev` | `yarn dev` |
+> | 生产构建 | `bun run build` | `pnpm build` | `npm run build` | `yarn build` |
+> | 启动生产服务 | `bun run start` | `pnpm start` | `npm run start` | `yarn start` |
+> | Cloudflare 构建 | `bun run build:cf` | `pnpm build:cf` | `npm run build:cf` | `yarn build:cf` |
+> | 部署到 Workers | `bun run deploy` | `pnpm deploy` | `npm run deploy` | `yarn deploy` |
 
 ### 本地开发
 
@@ -53,11 +66,11 @@
 git clone https://github.com/kentpan/cloudflare-voicecity-player.git
 cd cloudflare-voicecity-player
 
-# 安装依赖（推荐使用 bun）
-bun install
+# 安装依赖（任选一种包管理器）
+bun install      # 或 pnpm install / npm install / yarn
 
 # 启动开发服务器
-bun run dev
+bun run dev      # 或 pnpm dev / npm run dev / yarn dev
 ```
 
 打开 [http://localhost:3000](http://localhost:3000) 即可使用。
@@ -67,41 +80,93 @@ bun run dev
 ### 生产构建
 
 ```bash
-bun run build
-bun run start
+bun run build    # 或 pnpm build / npm run build / yarn build
+bun run start    # 或 pnpm start / npm run start / yarn start
 ```
 
-## ☁️ 部署到 Cloudflare Pages
+## ☁️ 部署到 Cloudflare（Workers）
 
-### 部署步骤
+> ⚠️ **重要**：本项目使用 [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) 适配器，
+> 部署目标是 **Cloudflare Workers**（不是 Pages）。
+>
+> **不要**在 Cloudflare Pages 控制台使用 `@cloudflare/next-on-pages` 构建工具！
+> 两者是完全不同的工具链：
+>
+> | 工具 | 运行时 | Node.js API | 本项目兼容性 |
+> |------|--------|-------------|--------------|
+> | `@cloudflare/next-on-pages`（旧，已弃用） | Edge Runtime | ❌ 不支持 `node:crypto`/`node:zlib`/`jsonwebtoken`/`@simplewebauthn/server` | ❌ 不兼容 |
+> | `@opennextjs/cloudflare`（本项目使用） | Workers + `nodejs_compat` | ✅ 完整支持 | ✅ 正确选择 |
+>
+> 本项目服务端依赖 `node:crypto`（QQ 音乐 zzcSign/QRC 解密、网易云 EAPI 加密、JWT 签名）、
+> `node:zlib`（QRC 歌词解压）、`jsonwebtoken`、`@simplewebauthn/server`（Passkey）等 Node.js API，
+> 在 Edge Runtime 下无法运行，因此**必须**使用 `@opennextjs/cloudflare` + Workers 部署。
 
-1. **创建 KV 命名空间**（用于存储播放器配置 + Passkey 凭证）
+### 部署方式 A：GitHub 仓库 + Cloudflare Workers Builds（Git 集成自动部署，推荐）
+
+适合希望 push 后自动构建部署的用户，无需本地环境。
+
+1. **Fork / 导入仓库**：将本项目 Fork 到自己的 GitHub 账号（或导入到 GitLab，Workers Builds 也支持 GitLab）。
+
+2. **创建 KV 命名空间**（在 Cloudflare 控制台或本地 wrangler 都可创建）：
 
    ```bash
    npx wrangler kv namespace create voicecity-kv
    ```
 
-   将返回的 `id` 填入 `wrangler.toml` 中的 `[[kv_namespaces]]` 的 `id` 字段。
+   记下返回的 `id`，下一步要用。
 
-2. **配置 ADMIN_SECRET 密钥**（管理员登录凭据）
+3. **在 Cloudflare 控制台创建 Workers 项目并连接 Git 仓库**：
+   - 进入 Cloudflare Dashboard → **Workers & Pages** → **Create** → **Workers** → **Connect to Git**
+   - 选择刚才 Fork 的仓库
+   - 构建配置：
+     - **构建命令**：`bun run build:cf`（若用其他包管理器：`pnpm build:cf` / `npm run build:cf` / `yarn build:cf`）
+     - **部署命令**：`npx @opennextjs/cloudflare deploy`
+     - **兼容性标志**：在 Workers 设置中开启 `nodejs_compat`（`wrangler.toml` 已配置，Workers Builds 会自动读取）
 
-   ```bash
-   npx wrangler pages secret put ADMIN_SECRET
-   ```
+4. **配置环境变量与绑定**（在 Workers 项目的 Settings 中）：
+   - **Variables** → 添加 `ADMIN_SECRET`，类型选 **Encrypt**（加密存储），填入你的管理员密钥
+   - **Bindings** → **Add binding** → **KV Namespace**，变量名填 `KV`，选择步骤 2 创建的命名空间
 
-   > `ADMIN_SECRET` 是登录管理员的唯一凭据。配置后，在首页右上角点击「登录」按钮，输入此密钥即可登录管理员。登录后可在「播放器管理」弹窗中配置播放器参数、注册 Passkey 等。
+5. **触发首次部署**：push 一次代码到 main 分支，或在控制台手动 **Retry deployment**。后续每次 push 自动构建部署。
 
-3. **构建并部署**
+> 也可以先在本地把 `wrangler.toml` 中 `[[kv_namespaces]]` 的 `id` 替换为步骤 2 返回的真实 id，再 push 到 GitHub，这样 Workers Builds 会自动读取绑定配置。
 
-   ```bash
-   bun run deploy
-   ```
+### 部署方式 B：本地直接使用 wrangler deploy（命令行部署）
+
+适合本地环境齐全、希望手动控制部署时机的用户。
+
+```bash
+# 1. 克隆并安装依赖
+git clone https://github.com/kentpan/cloudflare-voicecity-player.git
+cd cloudflare-voicecity-player
+bun install      # 或 pnpm install / npm install / yarn
+
+# 2. 登录 Cloudflare（首次需要）
+npx wrangler login
+
+# 3. 创建 KV 命名空间（用于存储播放器配置 + Passkey 凭证）
+npx wrangler kv namespace create voicecity-kv
+# 将返回的 id 填入 wrangler.toml 中 [[kv_namespaces]] 的 id 字段（替换 REPLACE_WITH_YOUR_KV_NAMESPACE_ID）
+
+# 4. 配置 ADMIN_SECRET 密钥（以 secret 形式存储，不写入文件）
+npx wrangler secret put ADMIN_SECRET
+# 按提示输入密钥值后回车
+
+# 5. 构建并部署到 Workers
+bun run deploy   # 或 pnpm deploy / npm run deploy / yarn deploy
+# 等价于：npm run build:cf && npx @opennextjs/cloudflare deploy
+```
+
+> `ADMIN_SECRET` 是登录管理员的唯一凭据。配置后，在首页右上角点击「登录」按钮，输入此密钥即可登录管理员。
+> 登录后可在「播放器管理」弹窗中配置播放器参数、注册 Passkey 等。
 
 ### 部署说明
 
-- **KV 命名空间** — 用于存储播放器配置（代理开关、播放器名称、title、github url、copyright）和 Passkey 凭证。创建后填入 `wrangler.toml`。
-- **ADMIN_SECRET** — 管理员登录密钥。未配置时前端会全屏阻断提示。
-- **无需数据库** — 播放历史存储在浏览器 indexedDB，音乐代理 API 为无状态服务端 fetch。
+- **部署目标**：Cloudflare Workers（非 Pages）。`wrangler.toml` 中的 `main = ".open-next/worker.js"` 是 Worker 入口。
+- **KV 命名空间**：用于存储播放器配置（代理开关、播放器名称、title、github url、copyright）和 Passkey 凭证。创建后填入 `wrangler.toml`，或在 Workers 控制台 Bindings 中绑定（变量名 `KV`）。
+- **ADMIN_SECRET**：管理员登录密钥，**必须**通过 `wrangler secret put` 或 Workers 控制台的 Encrypt 变量配置，不要写在 `wrangler.toml` 明文中。未配置时前端会全屏阻断提示。
+- **nodejs_compat**：`wrangler.toml` 中已配置 `compatibility_flags = ["nodejs_compat"]`，Workers 控制台部署时也需在设置中开启此标志。
+- **无需数据库**：播放历史存储在浏览器 indexedDB，音乐代理 API 为无状态服务端 fetch。
 
 ## 🛠️ 技术栈
 
@@ -221,8 +286,8 @@ bun run start
 |--------|------|------|
 | `ADMIN_SECRET` | 是 | 管理员登录密钥。配置后在首页右上角点击「登录」输入此密钥即可登录管理员。未配置时前端会全屏阻断提示。 |
 | `JWT_SECRET` | 否 | JWT 签名密钥。不配置时使用默认值（仅适合开发，生产环境建议配置）。 |
-| `RP_ID` | 否 | Passkey WebAuthn RP ID。生产环境自定义域名时配置。 |
-| `RP_ORIGIN` | 否 | Passkey WebAuthn RP Origin。生产环境自定义域名时配置。 |
+| `RP_ID` | 否 | Passkey WebAuthn RP ID。**通常无需配置** — 代码 `src/lib/passkey-config.ts` 会自动从请求头 Host 派生 registrable domain，兼容 localhost / IP / 自定义域名 / `*.workers.dev` / `*.pages.dev`。仅在访问域名与期望 RP 不一致时才需显式覆盖。 |
+| `RP_ORIGIN` | 否 | Passkey WebAuthn RP Origin。**通常无需配置** — 代码会自动从请求 URL 派生 `${protocol}//${host}`。仅在反代/转发场景下才需显式覆盖。 |
 
 ### Cloudflare KV
 

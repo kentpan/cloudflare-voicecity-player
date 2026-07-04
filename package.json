@@ -2,13 +2,13 @@
   "name": "cloudflare-voicecity-player",
   "version": "1.0.0",
   "private": true,
-  "description": "随心音乐播放器 — 一个基于 Next.js 16 的轻量音乐播放应用，支持网易云 / QQ音乐 / B站 多平台搜索、扫码登录、听歌识曲、统一播放器与本地播放历史（indexedDB），可一键部署到 Cloudflare Pages。",
+  "description": "随心音乐播放器 — 一个基于 Next.js 16 的轻量音乐播放应用，支持网易云 / QQ音乐 / B站 多平台搜索、扫码登录、听歌识曲、统一播放器与本地播放列表（indexedDB），可一键部署到 Cloudflare Workers。",
   "author": "kentpan <ayue530@gmail.com>",
   "license": "MIT",
   "keywords": [
     "music-player",
     "nextjs",
-    "cloudflare-pages",
+    "cloudflare-workers",
     "netease-cloud-music",
     "qq-music",
     "bilibili",
@@ -18,7 +18,7 @@
     "typescript",
     "tailwindcss"
   ],
-  "homepage": "https://github.com/kentpan/cloudflare-voicecity-player",
+  "homepage": "https://x18.ccwu.cc",
   "repository": {
     "type": "git",
     "url": "https://github.com/kentpan/cloudflare-voicecity-player.git"
@@ -27,13 +27,14 @@
     "url": "https://github.com/kentpan/cloudflare-voicecity-player/issues"
   },
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "next dev --webpack -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "eslint .",
     "build:cf": "npx @opennextjs/cloudflare build",
     "preview:cf": "npm run build:cf && npx @opennextjs/cloudflare preview",
-    "deploy": "npm run build:cf && npx @opennextjs/cloudflare deploy"
+    "deploy": "npm run build:cf && npx @opennextjs/cloudflare deploy",
+    "postinstall": "node scripts/patch-ios13.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.14",

@@ -36,7 +36,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  allowedDevOrigins: ["127.0.0.1", "localhost", "x18.ccwu.cc"],
+  devIndicators: false,
+  allowedDevOrigins: ["127.0.0.1", "localhost", "x18.ccwu.cc", "192.168.1.100"],
   // Transpile radix packages for older browser targets (iOS 13 / WeChat).
   transpilePackages: [
     "react",
@@ -46,6 +47,15 @@ const nextConfig: NextConfig = {
     ...radixPackages,
     "@simplewebauthn/browser",
   ],
+  webpack: (config, { isServer, dev }) => {
+    // Use 'source-map' instead of 'eval-source-map' so iOS 13.3.1 Safari doesn't
+    // choke on eval'd source with sourceURL. The eval wrapper can confuse the old
+    // parser, and source-map gives clearer error locations.
+    if (dev && !isServer) {
+      config.devtool = "source-map";
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

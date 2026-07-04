@@ -1,6 +1,6 @@
 import { setSessionCookie, ADMIN_USER } from "@/lib/auth";
 import { ok, fail, handleError, readBody } from "@/lib/api";
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqual } from "node:crypto";
 
 /**
  * POST /api/auth/admin-secret-login

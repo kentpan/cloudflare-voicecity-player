@@ -2,7 +2,7 @@
 import type { Song } from "@/types/voicehub";
 
 /**
- * 播放历史 indexedDB 封装。
+ * 播放列表 indexedDB 封装。
  *
  * 数据库：voicecity-lite
  * 对象仓库：
@@ -46,7 +46,7 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-/** 添加 / 更新一条播放历史（同一首歌 id 覆盖，playedAt 刷新为最新时间） */
+/** 添加 / 更新一条播放列表（同一首歌 id 覆盖，playedAt 刷新为最新时间） */
 export async function addPlayHistory(song: Song): Promise<void> {
   const db = await openDB();
   // 先读取现有记录，保留 favorited 状态
@@ -69,7 +69,7 @@ export async function addPlayHistory(song: Song): Promise<void> {
   });
 }
 
-/** 读取全部播放历史，按规则排序：收藏居顶，各部分内按 playedAt 倒序 */
+/** 读取全部播放列表，按规则排序：收藏居顶，各部分内按 playedAt 倒序 */
 export async function getPlayHistory(): Promise<Song[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -92,7 +92,7 @@ export async function getPlayHistory(): Promise<Song[]> {
   });
 }
 
-/** 删除一条播放历史 */
+/** 删除一条播放列表 */
 export async function deletePlayHistory(id: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -103,7 +103,7 @@ export async function deletePlayHistory(id: string): Promise<void> {
   });
 }
 
-/** 清空全部未收藏的播放历史（保留收藏的歌曲） */
+/** 清空全部未收藏的播放列表（保留收藏的歌曲） */
 export async function clearPlayHistory(): Promise<void> {
   const db = await openDB();
   const all = await getPlayHistory();

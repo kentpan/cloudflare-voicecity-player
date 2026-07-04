@@ -3,7 +3,6 @@
  *
  * WebAuthn 要求 RP_ID 必须是当前页面的有效域名（准确说是 registrable domain，
  * 即 eTLD+1）。从请求 Host header 自动派生，兼容 localhost / 127.0.0.1 / IP / 自定义域名。
- * 生产环境优先使用 RP_ID / RP_ORIGIN 环境变量。
  */
 
 /**
@@ -63,10 +62,6 @@ function getRegistrableDomain(hostname: string): string {
 }
 
 export function getRpId(req?: Request): string {
-  // 优先使用环境变量（生产环境自定义域名时配置，开发环境也可用）
-  if (process.env.RP_ID) {
-    return process.env.RP_ID;
-  }
   if (req) {
     try {
       const host = req.headers.get("host") || req.headers.get("x-forwarded-host");
@@ -80,15 +75,11 @@ export function getRpId(req?: Request): string {
 }
 
 export function getRpOrigin(req?: Request): string {
-  if (process.env.NODE_ENV === "production" && process.env.RP_ORIGIN) {
-    return process.env.RP_ORIGIN;
-  }
   if (req) {
     try {
       const url = new URL(req.url);
       return `${url.protocol}//${url.host}`;
     } catch { /* ignore */ }
   }
-  if (process.env.RP_ORIGIN) return process.env.RP_ORIGIN;
   return "http://localhost:3000";
 }

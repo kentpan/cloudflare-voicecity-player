@@ -30,7 +30,7 @@ import { toast } from "sonner";
  *   - netease/qq → 音频 (mp3)，隐藏 <audio> 元素
  *
  * 状态 (currentSong, isPlaying, mediaType) 由全局 Zustand store 管理，
- * 找歌列表 / 播放历史列表与播放器保持同步。
+ * 找歌列表 / 播放列表与播放器保持同步。
  *
  * 播放逻辑保持原版不变：切换歌曲时调用 /api/music/resolve-url 解析真实播放链接，
  * 通过 /api/music/proxy 代理附加 Referer 头以绕过 CDN 防盗链。

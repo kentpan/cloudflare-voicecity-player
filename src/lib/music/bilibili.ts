@@ -7,11 +7,38 @@
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-const BILI_HEADERS: Record<string, string> = {
-  Cookie: "buvid3=0",
-  Referer: "https://www.bilibili.com/",
-  "User-Agent": UA,
-};
+let cachedBuvid3: string | null = null;
+
+/** 从 B站 spi 接口获取真实 buvid3，规避云服务器 IP 段被反爬拦截 (412)。 */
+async function getBuvid3(): Promise<string> {
+  if (cachedBuvid3) return cachedBuvid3;
+  try {
+    const res = await fetch("https://api.bilibili.com/x/frontend/finger/spi", {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const json = (await res.json()) as { code: number; data?: { b_3?: string } };
+      if (json.code === 0 && json.data?.b_3) {
+        cachedBuvid3 = json.data.b_3;
+        return cachedBuvid3;
+      }
+    }
+  } catch (error) {
+    console.log("[bilibili] getBuvid3 failed:", error);
+  }
+  return "0";
+}
+
+/** 构建带有效 buvid3 的 B站请求 headers。 */
+async function getBiliHeaders(): Promise<Record<string, string>> {
+  const buvid3 = await getBuvid3();
+  return {
+    Cookie: `buvid3=${buvid3}`,
+    Referer: "https://www.bilibili.com/",
+    "User-Agent": UA,
+  };
+}
 
 export interface BilibiliVideoPage {
   cid: number;
@@ -57,6 +84,7 @@ function convertSong(
 /** Search Bilibili videos. Throws on failure (no silent fallback). */
 export async function searchBilibili(keyword: string, limit = 15): Promise<BilibiliTrack[]> {
   if (!keyword) return [];
+  const headers = await getBiliHeaders();
   const url = new URL("https://api.bilibili.com/x/web-interface/search/type");
   url.searchParams.set("page", "1");
   url.searchParams.set("page_size", String(limit));
@@ -67,7 +95,7 @@ export async function searchBilibili(keyword: string, limit = 15): Promise<Bilib
 
   const res = await fetch(url.toString(), {
     method: "GET",
-    headers: BILI_HEADERS,
+    headers,
     signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) throw new Error(`B站搜索失败: HTTP ${res.status}`);
@@ -81,7 +109,7 @@ export async function searchBilibili(keyword: string, limit = 15): Promise<Bilib
         const viewUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(song.bvid)}`;
         const viewRes = await fetch(viewUrl, {
           method: "GET",
-          headers: BILI_HEADERS,
+          headers,
           signal: AbortSignal.timeout(8000),
         });
         if (!viewRes.ok) return convertSong(song);
@@ -101,12 +129,13 @@ export async function searchBilibili(keyword: string, limit = 15): Promise<Bilib
 export async function resolveBilibiliUrl(bvid: string, cid?: string | number): Promise<{ url: string; pay: boolean }> {
   if (!bvid) throw new Error("缺少 B站 bvid 参数");
 
+  const headers = await getBiliHeaders();
   let finalCid = cid ? String(cid) : "";
   if (!finalCid) {
     const viewUrl = `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`;
     const viewRes = await fetch(viewUrl, {
       method: "GET",
-      headers: BILI_HEADERS,
+      headers,
       signal: AbortSignal.timeout(8000),
     });
     if (!viewRes.ok) throw new Error(`获取 B站视频信息失败: HTTP ${viewRes.status}`);
@@ -126,7 +155,7 @@ export async function resolveBilibiliUrl(bvid: string, cid?: string | number): P
 
   const res = await fetch(playUrl.toString(), {
     method: "GET",
-    headers: BILI_HEADERS,
+    headers,
     signal: AbortSignal.timeout(10000),
   });
   if (!res.ok) throw new Error(`获取 B站播放链接失败: HTTP ${res.status}`);

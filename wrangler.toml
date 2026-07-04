@@ -1,0 +1,37 @@
+# ============================================================
+# 随心音乐播放器 — Cloudflare Pages 配置 (wrangler.toml)
+# ============================================================
+#
+# 使用 @opennextjs/cloudflare 适配器，部署到 Cloudflare Pages/Workers。
+#
+# 部署步骤：
+#   1. 创建 KV 命名空间:  npx wrangler kv namespace create voicecity-kv
+#      将返回的 id 填到下方 [[kv_namespaces]] 的 id 字段
+#   2. 配置密钥:          npx wrangler pages secret put ADMIN_SECRET
+#   3. 部署:              bun run deploy
+#
+# KV 用于保存播放器配置（代理开关、播放器名称、title、github url、copyright）
+# 和 Passkey 凭证。本地开发无需 KV（自动回退到内存存储）。
+# ============================================================
+
+name = "voicecity-player"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+# @opennextjs/cloudflare 构建产物入口
+main = ".open-next/worker.js"
+
+# 静态资源目录
+assets = { directory = ".open-next/assets", binding = "ASSETS" }
+
+# ---- KV 命名空间绑定 ----
+# 用于存储播放器配置 + Passkey 凭证
+# 部署后通过 env.KV 访问
+[[kv_namespaces]]
+binding = "KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"  # 创建后替换
+
+# ---- 环境变量 ----
+# ADMIN_SECRET: 管理员登录密钥，必须配置
+# 通过 `npx wrangler pages secret put ADMIN_SECRET` 设置
+ADMIN_SECRET = "4b8d7782925464d97b0a8ec90389de9a"

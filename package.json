@@ -1,0 +1,83 @@
+{
+  "name": "cloudflare-voicecity-player",
+  "version": "1.0.0",
+  "private": true,
+  "description": "随心音乐播放器 — 一个基于 Next.js 16 的轻量音乐播放应用，支持网易云 / QQ音乐 / B站 多平台搜索、扫码登录、听歌识曲、统一播放器与本地播放历史（indexedDB），可一键部署到 Cloudflare Pages。",
+  "author": "kentpan <ayue530@gmail.com>",
+  "license": "MIT",
+  "keywords": [
+    "music-player",
+    "nextjs",
+    "cloudflare-pages",
+    "netease-cloud-music",
+    "qq-music",
+    "bilibili",
+    "cloudflare",
+    "indexeddb",
+    "react",
+    "typescript",
+    "tailwindcss"
+  ],
+  "homepage": "https://github.com/kentpan/cloudflare-voicecity-player",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kentpan/cloudflare-voicecity-player.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kentpan/cloudflare-voicecity-player/issues"
+  },
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "eslint .",
+    "build:cf": "npx @opennextjs/cloudflare build",
+    "preview:cf": "npm run build:cf && npx @opennextjs/cloudflare preview",
+    "deploy": "npm run build:cf && npx @opennextjs/cloudflare deploy"
+  },
+  "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.14",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-slider": "^1.3.5",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.3.2",
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "jsonwebtoken": "^9.0.3",
+    "lucide-react": "^0.525.0",
+    "next": "^16.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^2.0.6",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss-animate": "^1.0.7",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@opennextjs/cloudflare": "^1.20.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
+    "autoprefixer": "^10.5.2",
+    "bun-types": "^1.3.4",
+    "eslint": "^9",
+    "eslint-config-next": "^16.1.1",
+    "tailwindcss": "3.4.19",
+    "typescript": "^5",
+    "wrangler": "^4.106.0"
+  },
+  "browserslist": [
+    "iOS >= 13",
+    "Safari >= 13",
+    "Chrome >= 70",
+    "Firefox >= 70",
+    "Edge >= 79"
+  ]
+}

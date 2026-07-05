@@ -5,8 +5,8 @@ import type { MusicSearchResult } from "@/types/voicehub";
 /**
  * GET /api/bilibili/search?keyword=...
  *
- * Direct port of the original VoiceHub `server/api/bilibili/search.get.ts`.
- * Searches Bilibili videos and returns normalized track objects.
+ * Verbatim port of VoiceHub bilibili/search.get.ts.
+ * Searches Bilibili videos and returns normalized MusicSearchResult[].
  */
 export async function GET(req: Request) {
   try {

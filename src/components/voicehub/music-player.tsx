@@ -13,7 +13,6 @@ import {
   Mic,
   Loader2,
   ChevronDown,
-  AlertCircle,
   Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -348,11 +347,6 @@ export function MusicPlayer() {
                       <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
                     </div>
                   )}
-                  {errorMsg && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-red-900/80">
-                      <AlertCircle className="w-4 h-4 text-red-300" />
-                    </div>
-                  )}
                 </div>
               </button>
               {isVideo && (
@@ -378,7 +372,6 @@ export function MusicPlayer() {
                   {isVideo && <Badge className="text-[9px] py-0 px-1 bg-teal-500/80 shrink-0"><Video className="w-2.5 h-2.5 mr-0.5" />视频</Badge>}
                 </div>
                 <div className="text-xs text-muted-foreground truncate">{currentSong.artist}</div>
-                {errorMsg && <div className="text-[10px] text-red-400 truncate">{errorMsg}</div>}
               </div>
             </button>
             <Button
@@ -390,7 +383,7 @@ export function MusicPlayer() {
               }}
               disabled={playDisabled}
             >
-              {loadingUrl ? <Loader2 className="w-5 h-5 animate-spin" /> : errorMsg ? <AlertCircle className="w-5 h-5" /> : isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+              {loadingUrl ? <Loader2 className="w-5 h-5 animate-spin" /> : isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
             </Button>
             <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 relative z-10" onClick={handleClose} title="停止并关闭播放器">
               <X className="w-5 h-5" />
@@ -455,11 +448,6 @@ export function MusicPlayer() {
                       <Loader2 className="w-5 h-5 text-blue-400 animate-spin" />
                     </div>
                   )}
-                  {errorMsg && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-red-900/80">
-                      <AlertCircle className="w-5 h-5 text-red-300" />
-                    </div>
-                  )}
                 </div>
                 <div className="min-w-0 text-left">
                   <div className="flex items-center gap-1.5">
@@ -467,7 +455,6 @@ export function MusicPlayer() {
                     {isVideo && <Badge className="text-[10px] py-0 px-1 bg-teal-500/80 shrink-0"><Video className="w-2.5 h-2.5 mr-0.5" />视频</Badge>}
                   </div>
                   <div className="text-sm text-muted-foreground truncate">{currentSong.artist}</div>
-                  {errorMsg && <div className="text-[11px] text-red-400 truncate max-w-[180px]">{errorMsg}</div>}
                 </div>
               </button>
               {isVideo && (
@@ -496,7 +483,7 @@ export function MusicPlayer() {
                   disabled={playDisabled}
                   title={errorMsg ? "重试播放" : isPlaying ? "暂停" : "播放"}
                 >
-                  {loadingUrl ? <Loader2 className="w-5 h-5 animate-spin" /> : errorMsg ? <AlertCircle className="w-5 h-5" /> : isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+                  {loadingUrl ? <Loader2 className="w-5 h-5 animate-spin" /> : isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
                 </Button>
                 {isVideo && (
                   <Button variant="ghost" size="icon" className="h-9 w-9 relative z-20" onClick={() => setVideoMode(true)} title="视频模式">

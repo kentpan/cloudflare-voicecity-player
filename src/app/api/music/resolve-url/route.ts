@@ -1,6 +1,6 @@
 import { ok, fail, handleError, readBody } from "@/lib/api";
 import { resolveNetEaseUrl, fetchNetEaseLyric } from "@/lib/music/netease";
-import { resolveQqOfficialPlayUrl, resolveQqNativeLyric, fetchQqLegacyLyric } from "@/lib/music/qq";
+import { resolveQqOfficialPlayUrl, resolveQqNativeLyric, resolveQqSdkLyric, fetchQqLegacyLyric, getTxSongPlayableInfo } from "@/lib/music/qq";
 import { resolveBilibiliUrl } from "@/lib/music/bilibili";
 import { cookies } from "next/headers";
 
@@ -45,14 +45,21 @@ export async function POST(req: Request) {
       ]);
       source = "netease";
     } else if (detectedPlatform === "qq") {
-      const playUrl = await resolveQqOfficialPlayUrl(rawId, body.quality || "320", qqCookie);
+      // 归一化 ID: 旧数字 ID → songmid, 同时获取 strMediaMid/songId (aligned with VoiceHub)
+      const playableInfo = await getTxSongPlayableInfo(rawId);
+      const playUrl = await resolveQqOfficialPlayUrl(playableInfo.songmid, body.quality || "320", qqCookie, playableInfo.strMediaMid);
       url = playUrl;
-      // Try native QRC lyric, then legacy fallback
+      // Lyric chain: 原生 QRC → SDK fallback → legacy fallback
       try {
-        const lyricData = await resolveQqNativeLyric(rawId, qqCookie, { name: body.name, artist: body.artist, album: body.album, duration: body.duration });
+        const lyricData = await resolveQqNativeLyric(playableInfo.songId || playableInfo.songmid, qqCookie, { name: body.name, artist: body.artist, album: body.album, duration: body.duration });
         lyric = lyricData.lrc || lyricData.qrc || null;
       } catch {
-        try { lyric = await fetchQqLegacyLyric(rawId); } catch { lyric = null; }
+        try {
+          const sdkLyric = await resolveQqSdkLyric(playableInfo.songmid, playableInfo.songId, qqCookie);
+          lyric = sdkLyric.lrc || null;
+        } catch {
+          try { lyric = await fetchQqLegacyLyric(playableInfo.songmid, playableInfo.songId); } catch { lyric = null; }
+        }
       }
       source = "qq";
     } else if (detectedPlatform === "bilibili") {

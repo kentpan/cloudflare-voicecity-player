@@ -1,6 +1,6 @@
 import { ok, fail, handleError } from "@/lib/api";
 import { fetchNetEaseLyric } from "@/lib/music/netease";
-import { resolveQqNativeLyric, fetchQqLegacyLyric } from "@/lib/music/qq";
+import { resolveQqNativeLyric, resolveQqSdkLyric, fetchQqLegacyLyric, getTxSongPlayableInfo } from "@/lib/music/qq";
 
 /**
  * GET /api/music/lyric?platform=netease&musicId=wy-123
@@ -28,11 +28,19 @@ export async function GET(req: Request) {
     if (detected === "netease") {
       lyric = await fetchNetEaseLyric(rawId);
     } else if (detected === "qq") {
+      // 归一化 ID: mid → songmid + songId (aligned with VoiceHub)
+      const playableInfo = await getTxSongPlayableInfo(rawId);
+      // Lyric chain: 原生 QRC → SDK fallback → legacy fallback
       try {
-        const data = await resolveQqNativeLyric(rawId);
+        const data = await resolveQqNativeLyric(playableInfo.songId || playableInfo.songmid);
         lyric = data.lrc || data.qrc || null;
       } catch {
-        lyric = await fetchQqLegacyLyric(rawId);
+        try {
+          const sdkLyric = await resolveQqSdkLyric(playableInfo.songmid, playableInfo.songId);
+          lyric = sdkLyric.lrc || null;
+        } catch {
+          lyric = await fetchQqLegacyLyric(playableInfo.songmid, playableInfo.songId);
+        }
       }
     } else {
       return fail(`不支持的平台: ${detected}`, 400);

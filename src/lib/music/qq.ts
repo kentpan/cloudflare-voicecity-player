@@ -8,6 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { search as qqSdkSearch, getMusicPlay as qqSdkGetPlayUrl, getLyric as qqSdkGetLyric } from "@sansenjian/qq-music-api/sdk";
 
 export const txHeaders: Record<string, string> = {
   "User-Agent": "QQMusic 14090508(android 12)",
@@ -65,6 +66,173 @@ export function upgradeTxAudioUrl(url: string): string {
   return url.startsWith("http://") ? url.replace("http://", "https://") : url;
 }
 
+// ─── Cookie 归一化 (ported from VoiceHub qq_music_sdk.ts) ──────────────────
+const QQ_AUTH_COOKIE_KEYS = ["qqmusic_key", "qm_keyst", "music_key"];
+
+function parseCookieObject(cookie?: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!cookie) return result;
+  cookie.split(";").forEach((item) => {
+    const separatorIndex = item.indexOf("=");
+    if (separatorIndex <= 0) return;
+    const key = item.slice(0, separatorIndex).trim();
+    const value = item.slice(separatorIndex + 1).trim();
+    if (key && value) result[key] = value;
+  });
+  return result;
+}
+
+function serializeCookieObject(cookieObject: Record<string, string>): string {
+  return Object.entries(cookieObject)
+    .filter(([key, value]) => key && value)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("; ");
+}
+
+export function normalizeQqCookie(cookie?: string): string {
+  const cookieObject = parseCookieObject(cookie);
+  const fallbackKey = cookieObject.qm_keyst || cookieObject.music_key || cookieObject.qqmusic_key;
+  if (fallbackKey) {
+    cookieObject.qqmusic_key = fallbackKey;
+  }
+  return serializeCookieObject(cookieObject);
+}
+
+export interface QqCookieDiagnostic {
+  hasCookie: boolean;
+  hasUin: boolean;
+  uinType: string;
+  hasAuthKey: boolean;
+  authKeySource: string;
+  authKeys: string[];
+}
+
+export function getQqCookieDiagnostic(cookie?: string): QqCookieDiagnostic {
+  const normalizedCookie = normalizeQqCookie(cookie);
+  const cookieObject = parseCookieObject(normalizedCookie);
+  const authKeys = QQ_AUTH_COOKIE_KEYS.filter((key) => Boolean(cookieObject[key]));
+  return {
+    hasCookie: Boolean(normalizedCookie),
+    hasUin: Boolean(cookieObject.uin),
+    uinType: cookieObject.uin?.startsWith("o") ? "openid" : (cookieObject.uin ? "uin" : "missing"),
+    hasAuthKey: authKeys.length > 0,
+    authKeySource: cookieObject.qm_keyst
+      ? "qm_keyst"
+      : (cookieObject.music_key ? "music_key" : (cookieObject.qqmusic_key ? "qqmusic_key" : "missing")),
+    authKeys,
+  };
+}
+
+// ─── ID 归一化 + song detail 缓存 (ported from VoiceHub native_tx.ts) ────────
+const QQ_MID_PREFIX_RE = /^qqmid:/i;
+const QQ_LEGACY_ID_RE = /^\d+$/;
+const TX_DETAIL_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+export type TxIdType = "legacy-id" | "mid";
+
+export interface TxNormalizedMusicId {
+  rawMusicId: string;
+  normalizedMusicId: string;
+  idType: TxIdType;
+}
+
+export interface TxSongPlayableInfo extends TxNormalizedMusicId {
+  songmid: string;
+  songId?: string;
+  strMediaMid?: string;
+}
+
+export function normalizeTxMusicId(musicId: string | number): TxNormalizedMusicId {
+  const rawMusicId = String(musicId ?? "").trim();
+  const normalizedMusicId = rawMusicId.replace(QQ_MID_PREFIX_RE, "").trim();
+  if (!normalizedMusicId) {
+    throw new Error("缺少 QQ 音乐ID");
+  }
+  return {
+    rawMusicId,
+    normalizedMusicId,
+    idType: QQ_LEGACY_ID_RE.test(normalizedMusicId) ? "legacy-id" : "mid",
+  };
+}
+
+function createTxSongDetailBody(musicId: TxNormalizedMusicId) {
+  const param =
+    musicId.idType === "legacy-id"
+      ? { song_type: 0, song_id: Number(musicId.normalizedMusicId) }
+      : { song_type: 0, song_mid: musicId.normalizedMusicId };
+  return {
+    comm: { ct: "19", cv: "1859", uin: "0" },
+    req: { module: "music.pf_song_detail_svr", method: "get_song_detail_yqq", param },
+  };
+}
+
+const txSongDetailCache = new Map<string, { expiresAt: number; value: TxSongPlayableInfo }>();
+
+function getCachedTxSongDetail(key: string): TxSongPlayableInfo | null {
+  const cached = txSongDetailCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    txSongDetailCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedTxSongDetail(key: string, value: TxSongPlayableInfo): void {
+  if (txSongDetailCache.size >= 1000) {
+    const firstKey = txSongDetailCache.keys().next().value;
+    if (firstKey !== undefined) txSongDetailCache.delete(firstKey);
+  }
+  txSongDetailCache.set(key, { expiresAt: Date.now() + TX_DETAIL_CACHE_TTL, value });
+}
+
+/**
+ * 归一化 QQ 音乐 ID: 旧数字 ID → songmid, 同时获取 strMediaMid/songId。
+ * mid 类型直接返回;legacy-id 通过 song detail 接口转换;详情失败时 mid 回退自身。
+ */
+export async function getTxSongPlayableInfo(musicId: string | number): Promise<TxSongPlayableInfo> {
+  const normalized = normalizeTxMusicId(musicId);
+  const cacheKey = `${normalized.idType}:${normalized.normalizedMusicId}`;
+  const cached = getCachedTxSongDetail(cacheKey);
+  if (cached) return cached;
+
+  let result: any;
+  try {
+    result = await txRequest(TX_MUSICU_URL, createTxSongDetailBody(normalized));
+  } catch (error) {
+    if (normalized.idType === "mid") {
+      const value = { ...normalized, songmid: normalized.normalizedMusicId };
+      setCachedTxSongDetail(cacheKey, value);
+      return value;
+    }
+    throw error;
+  }
+
+  if (!result || result.code !== 0 || result.req?.code !== 0) {
+    if (normalized.idType === "mid") {
+      const value = { ...normalized, songmid: normalized.normalizedMusicId };
+      setCachedTxSongDetail(cacheKey, value);
+      return value;
+    }
+    throw new Error("QQ 音乐详情接口异常");
+  }
+
+  const trackInfo = result.req?.data?.track_info;
+  const songmid = trackInfo?.mid || normalized.normalizedMusicId;
+  if (!songmid) throw new Error("QQ 音乐详情缺少 MID");
+
+  const value: TxSongPlayableInfo = {
+    ...normalized,
+    songmid,
+    songId: String(trackInfo?.id || normalized.normalizedMusicId),
+    strMediaMid: trackInfo?.file?.media_mid,
+  };
+
+  setCachedTxSongDetail(cacheKey, value);
+  setCachedTxSongDetail(`mid:${songmid}`, { ...value, normalizedMusicId: songmid, idType: "mid" });
+  return value;
+}
+
 // ─── 搜索 (createTxSearchBody + DoSearchForQQMusicMobile) ─────────────────
 export function createTxSearchBody(str: string, page: number, limit: number) {
   return {
@@ -92,7 +260,58 @@ export interface QQSong {
 const stripHtml = (value: unknown) => String(value ?? "").replace(/[<>]/g, "");
 const decodeName = (value: string) => value;
 
-export async function searchQQMusic(keyword: string, limit = 20, page = 1): Promise<QQSong[]> {
+/** Format SDK search list items into QQSong[] (aligned with VoiceHub formatSdkSearchList) */
+function formatSdkSearchList(items: any[]): QQSong[] {
+  return items.map((item: any) => {
+    const songmid = item.songmid || item.mid;
+    const strMediaMid = item.strMediaMid || item.media_mid || item.file?.media_mid || songmid;
+    const albumMid = item.albummid || item.albumMid || item.album?.mid || "";
+    const singers = Array.isArray(item.singer)
+      ? item.singer.map((s: any) => s.name).filter(Boolean).join("、")
+      : item.singer || "";
+    const cover = albumMid && albumMid !== "空"
+      ? `https://y.gtimg.cn/music/photo_new/T002R500x500M000${albumMid}.jpg`
+      : (Array.isArray(item.singer) && item.singer[0]?.mid
+        ? `https://y.gtimg.cn/music/photo_new/T001R500x500M000${item.singer[0].mid}.jpg`
+        : "");
+    return {
+      id: songmid,
+      songId: String(item.songid || item.songId || item.id || ""),
+      strMediaMid,
+      name: decodeName(stripHtml(item.songname || item.name || item.title)),
+      artist: decodeName(stripHtml(singers)),
+      album: decodeName(stripHtml(item.albumname || item.albumName || item.album?.name || "")),
+      albumId: albumMid,
+      duration: Number(item.interval || item.duration || 0),
+      cover,
+    };
+  }).filter((item) => item.id);
+}
+
+export async function searchQQMusic(keyword: string, limit = 20, page = 1, cookie?: string): Promise<QQSong[]> {
+  // 1. 优先使用 qq-music-api SDK 搜索
+  try {
+    const normalizedCookie = normalizeQqCookie(cookie);
+    const sdkResult: any = await qqSdkSearch({
+      key: keyword,
+      limit,
+      page,
+      option: normalizedCookie ? { headers: { Cookie: normalizedCookie } } : undefined,
+    });
+    const status = Number(sdkResult?.status || 500);
+    const body = sdkResult?.body || {};
+    if (status < 400 && !body.error) {
+      const data = body.response || body.data || body;
+      const sdkList = data?.song?.list || data?.data?.song?.list || [];
+      const list = formatSdkSearchList(sdkList);
+      if (list.length > 0) return list;
+    }
+    console.warn("[qq_sdk] SDK search returned empty, falling back to native");
+  } catch (err) {
+    console.warn("[qq_sdk] SDK search failed, falling back to native:", err);
+  }
+
+  // 2. 回退到原生 txSignedRequest → txRequest
   const body = createTxSearchBody(keyword, page, limit);
   let result: any;
   try {
@@ -143,6 +362,18 @@ const QQ_SDK_QUALITY_MAP: Record<string, string> = {
   "128": "128", "320": "320", "128k": "128", "320k": "320",
   flac: "flac", sq: "flac", hires: "flac",
 };
+
+/** Huibq (lx-music-api) 期望的音质字符串: 128k/320k/flac/flac24bit */
+const TX_HUIBQ_QUALITY_MAP: Record<string, string> = {
+  "4": "128k", "8": "320k", "10": "flac", "11": "flac24bit", "14": "flac24bit",
+  "128": "128k", "320": "320k", "128k": "128k", "320k": "320k",
+  flac: "flac", sq: "flac", hires: "flac24bit", flac24bit: "flac24bit",
+};
+
+function normalizeHuibqQuality(quality?: string): string {
+  const key = String(quality ?? "8").toLowerCase();
+  return TX_HUIBQ_QUALITY_MAP[key] || "320k";
+}
 
 function normalizeQqSdkQuality(quality?: string): string {
   const key = String(quality ?? "8").toLowerCase();
@@ -208,7 +439,8 @@ function validateResolvedTxUrl(url: string, source: string): string {
 
 /** Resolver 1: lx-music-api (Huibq) — third-party API with X-Request-Key */
 async function resolveTxWithHuibq(songmid: string, quality: string): Promise<string> {
-  const url = `https://lxmusicapi.onrender.com/url/tx/${encodeURIComponent(songmid)}/${encodeURIComponent(quality)}`;
+  const huibqQuality = normalizeHuibqQuality(quality);
+  const url = `https://lxmusicapi.onrender.com/url/tx/${encodeURIComponent(songmid)}/${encodeURIComponent(huibqQuality)}`;
   const response = await fetch(url, {
     headers: {
       "X-Request-Key": "share-v3",
@@ -240,55 +472,78 @@ async function resolveTxWithDreamMeting(songmid: string): Promise<string> {
   throw new Error(`music.3e0.cn 未返回播放重定向(${response.status})`);
 }
 
-/** Resolver 3: Meting mirror (api.injahow.cn) */
-async function resolveTxWithMeting(songmid: string): Promise<string> {
-  const url = `https://api.injahow.cn/meting/?type=url&server=tencent&id=${encodeURIComponent(songmid)}`;
-  const response = await fetch(url, {
-    method: "GET",
-    redirect: "manual",
-    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
-    signal: AbortSignal.timeout(5000),
+/** Resolver 3: qq-music-api SDK (getMusicPlay) */
+async function resolveTxWithSdk(songmid: string, quality: string, cookie?: string, mediaId?: string): Promise<string> {
+  const normalizedCookie = normalizeQqCookie(cookie);
+  const sdkQuality = normalizeQqSdkQuality(quality);
+  const response = await qqSdkGetPlayUrl({
+    songmid,
+    quality: sdkQuality,
+    mediaId,
+    cookie: normalizedCookie || undefined,
   });
-  const location = response.headers.get("location");
-  if (location) return upgradeTxAudioUrl(location);
-  const ct = response.headers.get("content-type") ?? "";
-  if (response.ok && (ct.startsWith("audio") || ct.includes("octet-stream"))) {
-    return url;
+  const status = Number(response?.status || 500);
+  const body = response?.body || {};
+  if (status >= 400 || body.error) {
+    throw new Error(String(body.error || body.message || "qq-music-api 未返回播放链接"));
   }
-  throw new Error("Meting 未返回播放链接");
+  const data: any = body?.response || body?.data || body;
+  const url =
+    findFirstUrl(data?.url) ||
+    findFirstUrl(data?.playUrl?.[songmid]) ||
+    findFirstUrl(data?.playUrl);
+  if (!url || typeof url !== "string") {
+    throw new Error("qq-music-api 未返回播放链接");
+  }
+  return upgradeTxAudioUrl(url);
+}
+
+/** 在嵌套对象中查找第一个 HTTP 音频 URL */
+function findFirstUrl(value: unknown): string {
+  if (!value) return "";
+  if (typeof value === "string") {
+    return /^https?:\/\//i.test(value.trim()) ? value : "";
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = findFirstUrl(item);
+      if (url) return url;
+    }
+    return "";
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, any>;
+    if (typeof record.url === "string" && /^https?:\/\//i.test(record.url)) {
+      return record.url;
+    }
+    for (const item of Object.values(record)) {
+      const url = findFirstUrl(item);
+      if (url) return url;
+    }
+  }
+  return "";
 }
 
 export async function resolveQqOfficialPlayUrl(
   songmid: string,
   quality = "320",
-  cookieOrMediaId?: string,
+  cookie?: string,
   mediaId?: string
 ): Promise<string> {
-  // Support both (songmid, quality, cookie, mediaId) and (songmid, quality, mediaId)
-  let cookie = "";
-  let actualMediaId = mediaId;
-  if (cookieOrMediaId && cookieOrMediaId.includes("=")) {
-    cookie = cookieOrMediaId;
-  } else if (cookieOrMediaId) {
-    actualMediaId = cookieOrMediaId;
-  }
-
-  // Normalize quality for third-party resolvers
-  const huibqQuality = normalizeQqSdkQuality(quality);
+  const normalizedCookie = normalizeQqCookie(cookie);
   const errors: string[] = [];
 
-  // Resolver chain (matches original VoiceHub resolve-url.post.ts):
-  // 1. lx-music-api (Huibq)
-  // 2. music.3e0.cn
-  // 3. Meting mirror
+  // Resolver chain (aligned with VoiceHub resolve-url.post.ts + SDK fallback):
+  // 1. lx-music-api (Huibq) — 第三方,无需 cookie
+  // 2. music.3e0.cn — 第三方重定向,无需 cookie
+  // 3. qq-music-api SDK (getMusicPlay) — 支持 cookie 解析 VIP 歌曲
   // 4. Official vkey API (with cookie if available)
   const resolvers: Array<{ name: string; fn: () => Promise<string> }> = [
-    { name: "huibq", fn: async () => validateResolvedTxUrl(await resolveTxWithHuibq(songmid, huibqQuality), "huibq") },
+    { name: "huibq", fn: async () => validateResolvedTxUrl(await resolveTxWithHuibq(songmid, quality), "huibq") },
     { name: "music.3e0.cn", fn: async () => validateResolvedTxUrl(await resolveTxWithDreamMeting(songmid), "music.3e0.cn") },
-    { name: "meting", fn: async () => validateResolvedTxUrl(await resolveTxWithMeting(songmid), "meting") },
+    { name: "qq-music-api", fn: async () => validateResolvedTxUrl(await resolveTxWithSdk(songmid, quality, normalizedCookie, mediaId), "qq-music-api") },
   ];
 
-  // Try third-party resolvers first (they don't need login cookies)
   for (const resolver of resolvers) {
     try {
       const url = await resolver.fn();
@@ -304,20 +559,14 @@ export async function resolveQqOfficialPlayUrl(
   // Fall back to official vkey API
   const qualityKey = normalizeQqSdkQuality(quality);
   const fileType = QQ_PLAY_FILE_TYPE_MAP[qualityKey] || QQ_PLAY_FILE_TYPE_MAP["320"];
-  const playableFileId = String(actualMediaId || songmid || "").trim();
+  const playableFileId = String(mediaId || songmid || "").trim();
   if (!songmid) throw new Error("QQ 官方接口缺少 songmid");
   if (!playableFileId) throw new Error("QQ 官方接口缺少播放文件 ID");
   const guid = QQ_PLAY_GUID;
 
-  let uin = "0";
-  let authst = "";
-  if (cookie) {
-    const cookieParts = cookie.split(";").map(c => c.trim());
-    for (const c of cookieParts) {
-      if (c.startsWith("uin=")) uin = c.slice(4).replace(/^o/, "");
-      if (c.startsWith("qqmusic_key=")) authst = c.slice("qqmusic_key=".length);
-    }
-  }
+  const cookieObject = parseCookieObject(normalizedCookie);
+  const uin = cookieObject.uin || "0";
+  const authst = cookieObject.qqmusic_key || "";
 
   const filename = `${fileType.prefix}${playableFileId}${fileType.suffix}`;
   const payload = createQqOfficialVkeyPayload(songmid, filename, guid, uin, authst);
@@ -325,11 +574,11 @@ export async function resolveQqOfficialPlayUrl(
   let url = "";
   let info: Record<string, any> | undefined;
 
-  if (cookie) {
+  if (normalizedCookie) {
     try {
       const res = await fetch(TX_MUSICU_URL, {
         method: "POST",
-        headers: { ...txHeaders, Cookie: cookie, "Content-Type": "application/json" },
+        headers: { ...txHeaders, Cookie: normalizedCookie, "Content-Type": "application/json" },
         body: JSON.stringify(payload),
         signal: AbortSignal.timeout(8000),
       });
@@ -483,6 +732,7 @@ function tryDecryptQrc(hex: string | undefined): string | undefined {
 }
 
 export async function resolveQqNativeLyric(songId: string | number, cookie?: string, opts?: { name?: string; artist?: string; album?: string; duration?: number }): Promise<{ lrc?: string; qrc?: string; trans?: string }> {
+  const normalizedCookie = normalizeQqCookie(cookie);
   const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64");
   const baseParam = {
     albumName: b64(opts?.album || ""),
@@ -499,7 +749,7 @@ export async function resolveQqNativeLyric(songId: string | number, cookie?: str
   const doRequest = async (param: Record<string, unknown>) => {
     const body = buildBody(param);
     const headers: Record<string, string> = { ...txHeaders, "Content-Type": "application/json" };
-    if (cookie) headers["Cookie"] = cookie;
+    if (normalizedCookie) headers["Cookie"] = normalizedCookie;
     try {
       const sign = await zzcSign(JSON.stringify(body));
       const res = await fetch(`${TX_MUSICS_URL}?sign=${sign}`, {
@@ -533,6 +783,31 @@ export async function resolveQqNativeLyric(songId: string | number, cookie?: str
   }
   result.trans = tryDecryptQrc(data.trans) || undefined;
   return result;
+}
+
+/** SDK fallback: qq-music-api getLyric (returns LRC, aligned with VoiceHub resolveQqSdkLyric) */
+export async function resolveQqSdkLyric(songmid?: string, songid?: string, cookie?: string): Promise<{ lrc?: string; trans?: string }> {
+  const normalizedCookie = normalizeQqCookie(cookie);
+  const response = await qqSdkGetLyric({
+    songmid,
+    songid,
+    isFormat: false,
+    cookie: normalizedCookie || undefined,
+  });
+  const status = Number(response?.status || 500);
+  const body = response?.body || {};
+  if (status >= 400 || body.error) {
+    throw new Error(String(body.error || body.message || "qq-music-api 未返回歌词"));
+  }
+  const data: any = body.response || body.data || body;
+  const lrc = typeof data?.lyric === "string"
+    ? data.lyric
+    : (typeof data?.lrc === "string" && data.lrc ? Buffer.from(data.lrc, "base64").toString() : "");
+  const trans = typeof data?.trans === "string" && data.trans
+    ? Buffer.from(data.trans, "base64").toString()
+    : undefined;
+  if (!lrc) throw new Error("qq-music-api 未返回歌词");
+  return { lrc, trans };
 }
 
 /** Legacy fallback: fcg_query_lyric_new (returns base64 LRC). */

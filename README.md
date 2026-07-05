@@ -7,7 +7,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg)](https://www.typescriptlang.org/)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-orange.svg)](https://workers.cloudflare.com/)
 
-🌐 **在线 Demo**：<https://x18.ccwu.cc>
+🌐 **在线 Demo**：<https://voice.xubaoge.com>
 
 > ⭐ 如果这个项目对你有帮助，请您点个 Star 支持一下！你的 Star 是我持续更新的动力。
 
